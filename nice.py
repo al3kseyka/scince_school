@@ -12,12 +12,19 @@ torch.manual_seed(SEED)
 torch.set_num_threads(2)  # Для маленьких MLP на CPU.
 
 # размер картинок 32 на 32 на 3, вектор будет размера 3072
+# привести пиксели от [0; 255] к [-0.229; 1 - 0.229]: batch normalization
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
+])
 
 dataset = datasets.CIFAR10(
     root="./data",
     train=True,
     download=True,
-    transform=transforms.ToTensor())
+    transform=transform
+)
 
 def data_loader():
     return torch.utils.data.DataLoader(
