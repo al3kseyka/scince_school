@@ -46,12 +46,8 @@ class AdditiveCoupling(nn.Module):
         nn.init.zeros_(self.net[-1].bias)
 
     def forward(self, x, inverse=False):
-        if self.keep == 0:
-            a = x[:, :1536]
-            b = x[:, 1536:]
-        else:
-            b = x[:, :1536]
-            a = x[:, 1536:]
+        a = x[:, self.keep % 2::2]
+        b = x[:, (self.keep + 1) % 2::2]
 
         b = b + (-1 if inverse else 1) * self.net(a)
 
