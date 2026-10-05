@@ -84,7 +84,7 @@ class NICE(nn.Module):
         self.layers = nn.ModuleList([
             AdditiveCoupling(spliter, mid_model(spliter.left, spliter.right)) for spliter in spliter_list
         ])
-        self.log_scale = nn.Parameter(torch.zeros(2))
+        self.log_scale = nn.Parameter(torch.zeros(width))
 
     def forward(self, x):  # Данные -> латентное пространство.
         for layer in self.layers:
