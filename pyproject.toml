@@ -3,6 +3,7 @@ name = "science-school"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "gdown>=6.4.1",
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",
     "pytest>=9.1.1",
