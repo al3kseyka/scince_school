@@ -72,22 +72,94 @@ class AffineCoupling(nn.Module):
     def jacobian_det(self) -> float:
         return self.det
 
-class ScaleLayer(nn.Module):
-    def __init__(coupling_layers: nn.ModuleList, in_shape: Tuple[int], mod_shape: Tuple[int]):
+def squeeze(x: torch.Tensor):
+    B, C, H, W = x.shape
+    x = x.reshape(B, C, H // 2, 2, W // 2, 2)
+    x = x.permute(0, 3, 5, 1, 2, 4)
+    return x.reshape(B, 4 * C, H // 2, W // 2)
+
+def unsqueeze(x: torch.Tensor):
+    B, C4, H2, W2 = x.shape
+    x = x.reshape(B, 2, 2, C4 // 4, H2, W2)
+    x = x.permute(0, 3, 4, 1, 5, 2)
+    return x.reshape(B, C4 // 4, H2 * 2, W2 * 2)
+
+class Squizer(nn.Module):
+    def __init__(self, reverse: bool):
         super().__init__()
+        self.reverse = reverse
+
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        pass
+        if (self.reverse):
+            return unsqueeze(X)
+        return squeeze(X)
+
     def inverse(self, Y: torch.Tensor) -> torch.Tensor:
-        pass
+        if (self.reverse):
+            return squeeze(Y)
+        return unsqueeze(Y)
+
     def jacobian_det(self) -> float:
         return 0
+
+def checkerboard(C: int, H: int, W: int, parity: bool):
+    i = torch.arange(H).view(-1, 1)
+    j = torch.arange(W).view(1, -1)
+    return ((i + j) % 2 == parity).int().expand(C, H, W)
+
+def chanelwise(C: int, H: int, W: int, parity: bool):
+    a = torch.ones((C // 2, H, W), dtype=torch.int32)
+    staking = [a, a * 0] if parity else [a * 0, a]
+    return torch.stack(staking)
+
+def squized_size(C: int, H: int, W: int):
+    return (C * 4, H // 2, W // 2)
+
+class ScaleLayer(nn.Module):
+    def __init__(self, coupling_layers: nn.ModuleList, H: int, W: int):
+        super().__init__()
+        self.coupling_layers = coupling_layers
+        self.H, self.W = H, W
+        self.det = 0
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        patch = X[..., :self.H, :self.W]
+        for model in self.coupling_layers:
+            patch = model(patch)
+        if self.training:
+            self.det = 0
+            for model in self.coupling_layers:
+                self.det += model.jacobian_det()
+        X[..., :self.H, :self.W] = patch
+        return patch
+
+    def inverse(self, Y: torch.Tensor) -> torch.Tensor:
+        patch = Y[..., :self.H, :self.W]
+        for model in reversed(self.coupling_layers):
+            patch = model.inverse(patch)
+        Y[..., :self.H, :self.W] = patch
+        return Y
+
+    def jacobian_det(self) -> float:
+        return self.det
 
 class NVP(nn.Module):
     def __init__(self, scale_layers: nn.ModuleList):
         super().__init__()
+        self.det = 0
+        self.scale_layers = scale_layers
     def forward(self, X: torch.Tensor):
-        pass
+        for scale in self.scale_layers:
+            X = scale(X)
+        if self.training:
+            self.det = 0
+            for model in self.scale_layers:
+                self.det += model.jacobian_det()
+        return X
     def inverse(self, Y: torch.Tensor) -> torch.Tensor:
-        pass
+        for scale in self.scale_layers:
+            Y = scale(Y)    
+        return Y
+
     def jacobian_det(self) -> float:
-        return 0
+        return self.det
