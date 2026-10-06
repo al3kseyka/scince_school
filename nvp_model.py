@@ -21,11 +21,12 @@ class Normalizer(nn.Module):
         if self.training:
             mean = X.mean(dim=0)
             var = X.var(dim=0)
-
-            self.running_mean.mul_(1 - self.m).add_(self.m * mean)
-            self.running_var.mul_(1 - self.m).add_(self.m * var)
+            with torch.no_grad():
+                self.running_mean.mul_(1 - self.m).add_(self.m * mean)
+                self.running_var.mul_(1 - self.m).add_(self.m * var)
 
             self.det = - self.eps * self.size / 2 - self.running_var.sum() / 2
+            self.det *= X.shape[0]
 
         return (X - self.running_mean) / (self.running_var + self.eps).sqrt()
 
@@ -108,7 +109,7 @@ def checkerboard(C: int, H: int, W: int, parity: bool):
 def chanelwise(C: int, H: int, W: int, parity: bool):
     a = torch.ones((C // 2, H, W), dtype=torch.int32)
     staking = [a, a * 0] if parity else [a * 0, a]
-    return torch.stack(staking)
+    return torch.cat(staking)
 
 def squized_size(C: int, H: int, W: int):
     return (C * 4, H // 2, W // 2)
@@ -128,15 +129,18 @@ class ScaleLayer(nn.Module):
             self.det = 0
             for model in self.coupling_layers:
                 self.det += model.jacobian_det()
-        X[..., :self.H, :self.W] = patch
-        return patch
+        Y = torch.cat([patch, X[..., :self.H, self.W:]], dim=-1)
+        Y = torch.cat([Y, X[..., self.H:, :]], dim=-2)
+        return Y
 
     def inverse(self, Y: torch.Tensor) -> torch.Tensor:
         patch = Y[..., :self.H, :self.W]
         for model in reversed(self.coupling_layers):
             patch = model.inverse(patch)
-        Y[..., :self.H, :self.W] = patch
-        return Y
+        # Y[..., :self.H, :self.W] = patch
+        X = torch.cat([patch, Y[..., :self.H, self.W:]], dim=-1)
+        X = torch.cat([X, Y[..., self.H:, :]], dim=-2)
+        return X
 
     def jacobian_det(self) -> float:
         return self.det
@@ -155,8 +159,8 @@ class NVP(nn.Module):
                 self.det += model.jacobian_det()
         return X
     def inverse(self, Y: torch.Tensor) -> torch.Tensor:
-        for scale in self.scale_layers:
-            Y = scale(Y)    
+        for scale in reversed(self.scale_layers):
+            Y = scale.inverse(Y)    
         return Y
 
     def jacobian_det(self) -> float:
