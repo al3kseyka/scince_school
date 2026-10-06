@@ -1,8 +1,6 @@
-import nice_model
 import torch
 import torch.nn as nn
-from typing import Callable, List, Iterable, Tuple
-import math
+from typing import Tuple
 
 class Normalizer(nn.Module):
     def __init__(self, shape: Tuple[int], moment: float = 0.1, eps: float = 1e-3):
