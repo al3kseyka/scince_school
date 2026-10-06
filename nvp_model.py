@@ -44,7 +44,7 @@ class AffineCoupling(nn.Module):
                  s: nn.Module,
                  t: nn.Module):
         super().__init__()
-        self.register_buffer("masking", masking)
+        self.register_buffer("masking", masking.clone())
         self.s = s
         self.t = t
         self.det = 0
