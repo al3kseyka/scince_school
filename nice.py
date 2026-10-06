@@ -63,10 +63,6 @@ class BatchNormFlow(nn.Module):
         self.eps = eps
         self.m = m
 
-        # учим параметры масштаба и сдвига
-        self.log_gamma = nn.Parameter(torch.zeros(dim)) # обучаемый логарифм масштаба (чтобы сразу положительный)
-        self.beta = nn.Parameter(torch.zeros(dim)) # обучаемый сдвиг
-
         # running statistics
         self.register_buffer("running_mean", torch.zeros(dim))
         self.register_buffer("running_var", torch.ones(dim))
@@ -86,15 +82,12 @@ class BatchNormFlow(nn.Module):
 
         if not inverse:
             x = (x - mean) / torch.sqrt(var + self.eps)
-            x = x * self.log_gamma.exp() + self.beta
-            log_det = (self.log_gamma - 0.5 * torch.log(var + self.eps)).sum()
+            log_det = (-0.5 * torch.log(var + self.eps)).sum()
 
             return x, log_det.expand(x.shape[0])
 
         else:
-            x = (x - self.beta) * (-self.log_gamma).exp()
             x = x * torch.sqrt(var + self.eps) + mean
-
             return x
 
 
