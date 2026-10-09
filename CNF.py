@@ -105,5 +105,41 @@ class Wraper:
         return odeint(func=(lambda t, state: self.field(t, state.detach())),
                             y0=X,
                             t=torch.tensor([1., 0], device=device))[-1]
-    def backward(self, X: torch.Tensor):
-        pass
+    def backward(self, X: torch.Tensor, loss: torch.Tensor):
+        self.field.zero_grad()
+        #state consist of X, dL/dx, dL/d\theta
+        def func(t, state):
+            X = state[0]
+            #self.field.zero_grad()
+            dx = self.field(t, X, grad=True)
+            minusA = state[1]
+            minusA = -1 * minusA
+            # print(minusA.shape, type(minusA), minusA[0].shape)
+            da, = torch.autograd.grad(outputs=dx, inputs=X, grad_outputs=minusA, retain_graph=True)
+            # print(da)
+            dth = torch.autograd.grad(outputs=dx,
+                                      inputs=self.field.parameters(),
+                                      grad_outputs=[minusA])
+            dth = torch.nn.utils.parameters_to_vector(dth)
+            # print(dth)
+            dx = dx.detach()
+            assert not dx.requires_grad and not da.requires_grad and not dth.requires_grad
+            # print(dx.shape, da.shape, dth.shape, state[0].shape, state[1].shape, state[2].shape)
+            return (dx, da, dth)
+        parameters = torch.nn.utils.parameters_to_vector(self.field.parameters()).shape[0]
+        dLdx, = torch.autograd.grad(loss, X)
+
+        # print(dLdx.shape, X, torch.zeros(X.shape[0], parameters).shape)
+        y0 = (X, dLdx, torch.zeros(parameters))
+        _, _, dLdtheta = odeint(func, y0, torch.tensor([1.,0]))
+        # print(dLdtheta)
+        vecGrad = dLdtheta[1]
+        grads = torch.split(vecGrad, [p.numel() for p in self.field.parameters()])
+        for p, grad in zip(self.field.parameters(), grads):
+            p.grad = grad.reshape_as(p)
+
+def loss_function(n: int, X: torch.Tensor, logprop: torch.Tensor):
+    normal = torch.distributions.MultivariateNormal(torch.zeros(n), torch.eye(n))
+    mle = normal.log_prob(X) - logprop
+    #may change
+    return -mle.sum()
