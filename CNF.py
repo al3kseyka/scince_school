@@ -57,6 +57,7 @@ class CNF(nn.Module):
         self.fields = fields
 
     def forward(self, t, states, log_jac=False, grad=False):
+        device = next(self.parameters()).device
         if log_jac:
             X = states[0]
         else:
@@ -66,7 +67,7 @@ class CNF(nn.Module):
         res = torch.zeros_like(X)
 
         if log_jac:
-            resultjacoblog = torch.zeros(batch_size, 1)
+            resultjacoblog = torch.zeros(batch_size, 1, device=device)
             
             for field, activation in zip(self.fields, self.activations):
                 delta, jacobianlog = field(t, detach(states), log_jac=True, grad=False)
@@ -106,6 +107,7 @@ class Wraper:
                             y0=X,
                             t=torch.tensor([1., 0], device=device))[-1]
     def backward(self, X: torch.Tensor, loss: torch.Tensor):
+        device = next(self.field.parameters()).device
         self.field.zero_grad()
         #state consist of X, dL/dx, dL/d\theta
         def func(t, state):
@@ -130,8 +132,8 @@ class Wraper:
         dLdx, = torch.autograd.grad(loss, X)
 
         # print(dLdx.shape, X, torch.zeros(X.shape[0], parameters).shape)
-        y0 = (X, dLdx, torch.zeros(parameters))
-        _, _, dLdtheta = odeint(func, y0, torch.tensor([1.,0]))
+        y0 = (X, dLdx, torch.zeros(parameters, device=device))
+        _, _, dLdtheta = odeint(func, y0, torch.tensor([1.,0], device=device))
         # print(dLdtheta)
         vecGrad = dLdtheta[1]
         grads = torch.split(vecGrad, [p.numel() for p in self.field.parameters()])
@@ -139,7 +141,8 @@ class Wraper:
             p.grad = grad.reshape_as(p)
 
 def loss_function(n: int, X: torch.Tensor, logprop: torch.Tensor):
-    normal = torch.distributions.MultivariateNormal(torch.zeros(n), torch.eye(n))
+    device = X.device
+    normal = torch.distributions.MultivariateNormal(torch.zeros(n, device=device), torch.eye(n, device=device))
     mle = normal.log_prob(X) - logprop
     #may change
     return -mle.sum()
