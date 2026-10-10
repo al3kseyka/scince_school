@@ -124,7 +124,7 @@ class Wraper:
             #self.field.zero_grad()
             dx, dlog = self.field(t, (X, None), grad=True, log_jac=True)
             # minusA = -1 * minusA
-            minusA = torch.cat([-state[1], torch.ones(state[1].shape[0], 1, device=device)], dim=1)
+            minusA = torch.cat([-state[1], -torch.ones(state[1].shape[0], 1, device=device)], dim=1)
 
             dx = torch.cat([dx, dlog], dim=1)
             # print(minusA.shape, type(minusA), minusA[0].shape)
