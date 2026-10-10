@@ -87,27 +87,34 @@ class CNF(nn.Module):
         return res
 
 class Wraper:
-    def __init__(self, field):
+    def __init__(self, field, rtol = 1e-3, atol = 1e-5, method = "bosh3"):
         self.field: nn.Module = field
+        self.atol = atol
+        self.rtol = rtol
+        self.method = method
     def forward(self, X: torch.Tensor, log_jac = False):
         device = next(self.field.parameters()).device
         if log_jac:
             x_t, jac_t = odeint(func=(lambda t, state: self.field(t, detach(state), log_jac=True)),
                           y0=(X, torch.zeros(X.shape[0], device=device)),
-                          t=torch.tensor([0., 1], device=device))
+                          t=torch.tensor([0., 1], device=device),
+                          rtol=self.rtol, atol=self.atol, method=self.method)
             return x_t[-1], jac_t[-1]
         return odeint(func=(lambda t, state: self.field(t, state.detach())),
                           y0=X,
-                          t=torch.tensor([0., 1], device=device))[-1]
+                          t=torch.tensor([0., 1], device=device),
+                          rtol=self.rtol, atol=self.atol, method=self.method)[-1]
     def inverse(self, X: torch.Tensor, log_jac = False):
         device = next(self.field.parameters()).device
         if log_jac:
             return odeint(func=(lambda t, state: self.field(t, detach(state), log_jac=True)),
                             y0=(X, torch.zeros(X.shape[0], device=device)),
-                            t=torch.tensor([1., 0], device=device))[-1]
+                            t=torch.tensor([1., 0], device=device),
+                            rtol=self.rtol, atol=self.atol, method=self.method)[-1]
         return odeint(func=(lambda t, state: self.field(t, state.detach())),
                             y0=X,
-                            t=torch.tensor([1., 0], device=device))[-1]
+                            t=torch.tensor([1., 0], device=device),
+                            rtol=self.rtol, atol=self.atol, method=self.method)[-1]
     def backward(self, X: torch.Tensor, loss: torch.Tensor):
         device = next(self.field.parameters()).device
         self.field.zero_grad()
@@ -137,7 +144,8 @@ class Wraper:
 
         # print(dLdx.shape, X, torch.zeros(X.shape[0], parameters).shape)
         y0 = (X, dLdx, torch.zeros(parameters, device=device))
-        _, _, dLdtheta = odeint(func, y0, torch.tensor([1.,0], device=device))
+        _, _, dLdtheta = odeint(func, y0, torch.tensor([1.,0], device=device),
+                                rtol=self.rtol, atol=self.atol, method=self.method)
         # print(dLdtheta)
         vecGrad = dLdtheta[1]
         grads = torch.split(vecGrad, [p.numel() for p in self.field.parameters()])
