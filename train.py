@@ -11,11 +11,14 @@ from tqdm import tqdm
 
 DEVICE = "cpu"
 
-FIELDS = 16
-HIDDEN_LAYERS = 8
+FIELDS = 32
+HIDDEN_LAYERS = 16
 STEPS = 1000
 SAVE_AFTER = 50
 BATCH_SIZE = 64
+RTOL = 1e-3
+ATOL = 1e-5
+METHOD = "adaptive_heun"
 EPOCHES = 50
 
 def get_batch(n: int):
@@ -28,7 +31,7 @@ def density(X, wraped):
     return distribution.log_prob(Y) - logprop
 
 def show_density(fig, ax, wraped):
-    dist = 5
+    dist = 3
     # Координаты сетки
     x = torch.linspace(-dist, dist, 200)
     y = torch.linspace(-dist, dist, 200)
@@ -78,9 +81,9 @@ def main():
                                     torch.nn.Sigmoid()) for i in range(filds_num)])
     cnf = CNF.CNF(fields=cpnflist, activations=time_gates).to(DEVICE)
 
-    cnf.load_state_dict(torch.load("models/cnf.pt", weights_only=True))
+    # cnf.load_state_dict(torch.load("models/cnf.pt", weights_only=True))
     # cnf.compile()
-    wraped = CNF.Wraper(cnf)
+    wraped = CNF.Wraper(cnf, rtol=RTOL, atol=ATOL, method=METHOD)
     # from torch.profiler import profile, ProfilerActivity
 
     # activities = [ProfilerActivity.CUDA]
