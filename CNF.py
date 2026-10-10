@@ -117,14 +117,16 @@ class Wraper:
                             rtol=self.rtol, atol=self.atol, method=self.method)[-1]
     def backward(self, X: torch.Tensor, loss: torch.Tensor):
         device = next(self.field.parameters()).device
+        batch_size = X.shape[0]
         self.field.zero_grad()
         #state consist of X, dL/dx, dL/d\theta
         def func(t, state):
             X = state[0]
+            X.requires_grad_()
             #self.field.zero_grad()
             dx, dlog = self.field(t, (X, None), grad=True, log_jac=True)
             # minusA = -1 * minusA
-            minusA = torch.cat([-state[1], -torch.ones(state[1].shape[0], 1, device=device)], dim=1)
+            minusA = torch.cat([-state[1], -torch.ones(state[1].shape[0], 1, device=device) / batch_size], dim=1)
 
             dx = torch.cat([dx, dlog], dim=1)
             # print(minusA.shape, type(minusA), minusA[0].shape)
@@ -143,7 +145,7 @@ class Wraper:
         dLdx, = torch.autograd.grad(loss, X)
 
         # print(dLdx.shape, X, torch.zeros(X.shape[0], parameters).shape)
-        y0 = (X, dLdx, torch.zeros(parameters, device=device))
+        y0 = (X.detach(), dLdx.detach(), torch.zeros(parameters, device=device))
         _, _, dLdtheta = odeint(func, y0, torch.tensor([1.,0], device=device),
                                 rtol=self.rtol, atol=self.atol, method=self.method)
         # print(dLdtheta)
