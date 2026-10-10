@@ -28,18 +28,20 @@ class Cpnf(nn.Module):
             b = self.b.detach()
 
         if log_jac:
-            X = X.detach()
+            # X = X.detach()
             preval = torch.matmul(X, w) + b
             preval.requires_grad_()
             val: torch.Tensor = self.h(preval)
-            assert preval.is_leaf
-            dhdv, = torch.autograd.grad(outputs=val, inputs=preval, grad_outputs=torch.ones_like(val))
-            val = val.detach()
+            # assert preval.is_leaf
+            dhdv, = torch.autograd.grad(outputs=val, inputs=preval, grad_outputs=torch.ones_like(val),
+                                        create_graph=grad, retain_graph=grad)
+            if not grad:
+                val = val.detach()
 
             dhdx = torch.matmul(dhdv.view(batch_size, 1), w.view(1, self.n))
             dlog = -torch.matmul(dhdx, u.view(self.n, 1))
             
-            assert not dlog.requires_grad
+            # assert not dlog.requires_grad
             return torch.matmul(val.view(batch_size, 1), u.view(1, self.n)), dlog
 
         
@@ -70,8 +72,8 @@ class CNF(nn.Module):
             resultjacoblog = torch.zeros(batch_size, 1, device=device)
             
             for field, activation in zip(self.fields, self.activations):
-                delta, jacobianlog = field(t, detach(states), log_jac=True, grad=False)
-                with torch.no_grad():
+                delta, jacobianlog = field(t, states, log_jac=True, grad=grad)
+                with torch.set_grad_enabled(grad):
                     alpha = activation(t.view(1, 1)).view(1)
                 res = res + alpha * delta
                 resultjacoblog = alpha * jacobianlog + resultjacoblog
@@ -113,18 +115,20 @@ class Wraper:
         def func(t, state):
             X = state[0]
             #self.field.zero_grad()
-            dx = self.field(t, X, grad=True)
-            minusA = state[1]
-            minusA = -1 * minusA
+            dx, dlog = self.field(t, (X, None), grad=True, log_jac=True)
+            # minusA = -1 * minusA
+            minusA = torch.cat([-state[1], torch.ones(state[1].shape[0], 1, device=device)], dim=1)
+
+            dx = torch.cat([dx, dlog], dim=1)
             # print(minusA.shape, type(minusA), minusA[0].shape)
             da, = torch.autograd.grad(outputs=dx, inputs=X, grad_outputs=minusA, retain_graph=True)
             # print(da)
             dth = torch.autograd.grad(outputs=dx,
                                       inputs=self.field.parameters(),
-                                      grad_outputs=[minusA])
+                                      grad_outputs=minusA)
             dth = torch.nn.utils.parameters_to_vector(dth)
-            # print(dth)
-            dx = dx.detach()
+            dx = dx.detach()[:, :-1]
+            # print(state[0].shape, state[1].shape, state[2].shape, dx.shape, da.shape, dth.shape)
             assert not dx.requires_grad and not da.requires_grad and not dth.requires_grad
             # print(dx.shape, da.shape, dth.shape, state[0].shape, state[1].shape, state[2].shape)
             return (dx, da, dth)
