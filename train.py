@@ -8,18 +8,26 @@ from sklearn.datasets import make_circles
 from tqdm import tqdm
 # from IPython.display import display
 # import os
+from pathlib import Path
 
 DEVICE = "cpu"
+torch.set_num_threads(16)
+torch.set_num_interop_threads(16)
 
-FIELDS = 32
-HIDDEN_LAYERS = 16
+FIELDS = 64
+HIDDEN_LAYERS = 64
 STEPS = 1000
 SAVE_AFTER = 50
 BATCH_SIZE = 64
-RTOL = 1e-3
-ATOL = 1e-5
+RTOL = 1e-2
+ATOL = 1e-4
 METHOD = "adaptive_heun"
 EPOCHES = 50
+LEARNING_RATE = 0.01
+
+CHECKPOINT_NAME = "cnf_1.pt"
+CHECKPOINTS_ROOT = Path("checkpoints")
+
 
 def get_batch(n: int):
     X, _ = make_circles(n, noise=0.06, factor=0.5)
@@ -31,7 +39,7 @@ def density(X, wraped):
     return distribution.log_prob(Y) - logprop
 
 def show_density(fig, ax, wraped):
-    dist = 3
+    dist = 1.5
     # Координаты сетки
     x = torch.linspace(-dist, dist, 200)
     y = torch.linspace(-dist, dist, 200)
@@ -62,6 +70,10 @@ def show_density(fig, ax, wraped):
     else:
         fig._cbar = fig.colorbar(im, ax=ax)
 
+def save_checkpoint(model, optim, step):
+    data = {"model": model, "optimizer": optim, "step": step}
+    torch.save(data, CHECKPOINTS_ROOT/CHECKPOINT_NAME)
+
 def main():
     dataset = get_batch(10000)
     dataset = torch.utils.data.TensorDataset(dataset)
@@ -87,8 +99,15 @@ def main():
     # from torch.profiler import profile, ProfilerActivity
 
     # activities = [ProfilerActivity.CUDA]
-    optimizer = torch.optim.Adam(wraped.field.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(wraped.field.parameters(), lr=LEARNING_RATE)
     step = 0
+
+    if (CHECKPOINTS_ROOT/CHECKPOINT_NAME).exists():
+        data = torch.load(CHECKPOINTS_ROOT/CHECKPOINT_NAME)
+        cnf.load_state_dict(data["model"])
+        optimizer.load_state_dict(data["optimizer"])
+        step = data["step"] + 1
+
     # history = []
     fig, ax = plt.subplots()
     # out = display(fig, display_id=True)
@@ -113,12 +132,14 @@ def main():
                 # out.update(fig)
                 torch.save(cnf.state_dict(), "models/cnf.pt")
                 fig.savefig("gallery/fig" + str(step) + ".png")
+                save_checkpoint(wraped.field.state_dict(), optimizer.state_dict(), step)
             # if step == 10:
             #     break
             step+=1
     show_density(fig, ax, wraped)
     torch.save(cnf.state_dict(), "models/cnf.pt")
     fig.savefig("gallery/fig" + str(step) + ".png")
+    save_checkpoint(wraped.field.state_dict(), optimizer.state_dict(), step)
 
 if __name__ == "__main__":
     main()
