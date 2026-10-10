@@ -145,4 +145,4 @@ def loss_function(n: int, X: torch.Tensor, logprop: torch.Tensor):
     normal = torch.distributions.MultivariateNormal(torch.zeros(n, device=device), torch.eye(n, device=device))
     mle = normal.log_prob(X) - logprop
     #may change
-    return -mle.sum()
+    return -mle.mean()
