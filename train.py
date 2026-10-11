@@ -15,23 +15,46 @@ torch.set_num_threads(16)
 torch.set_num_interop_threads(16)
 
 FIELDS = 64
-HIDDEN_LAYERS = 64
+HIDDEN_LAYERS = 5
+HIDDEN_FEATURES = 64
 STEPS = 1000
 SAVE_AFTER = 50
+DATASET_SIZE = 100000
 BATCH_SIZE = 64
 RTOL = 1e-2
-ATOL = 1e-4
+ATOL = 1e-3
 METHOD = "adaptive_heun"
 EPOCHES = 50
 LEARNING_RATE = 0.01
 
-CHECKPOINT_NAME = "cnf_1.pt"
+CHECKPOINT_NAME = "cnf_checkerboard.pt"
 CHECKPOINTS_ROOT = Path("checkpoints")
 
 
 def get_batch(n: int):
-    X, _ = make_circles(n, noise=0.06, factor=0.5)
-    return torch.tensor(X, dtype=torch.float32, device=DEVICE)
+    # X, _, _ = make_checkerboard((n,2), n_clusters=8, noise=0.06, minval=-2, maxval=2)
+    x_min, x_max = -2, 2
+    y_min, y_max = -2, 2
+
+    n *= 3
+    X = np.random.uniform(
+        [x_min, y_min],
+        [x_max, y_max],
+        size=(n, 2),
+    )
+
+    # Размер клетки
+    cell_size = 0.5
+
+    # Метка зависит от клетки шахматной доски
+    y = (
+        (np.floor(X[:, 0] / cell_size)
+        + np.floor(X[:, 1] / cell_size)) % 2
+    )
+    X = X[y == 0]
+    print(y.shape, X.shape, y.sum())
+    assert X.shape[0] >= n // 3
+    return torch.tensor(X[:n // 3], dtype=torch.float32, device=DEVICE)
 
 def density(X, wraped):
     distribution = torch.distributions.MultivariateNormal(torch.zeros(2, device=DEVICE), torch.eye(2, device=DEVICE))
@@ -39,7 +62,7 @@ def density(X, wraped):
     return distribution.log_prob(Y) - logprop
 
 def show_density(fig, ax, wraped):
-    dist = 1.5
+    dist = 2.5
     # Координаты сетки
     x = torch.linspace(-dist, dist, 200)
     y = torch.linspace(-dist, dist, 200)
@@ -75,19 +98,23 @@ def save_checkpoint(model, optim, step):
     torch.save(data, CHECKPOINTS_ROOT/CHECKPOINT_NAME)
 
 def main():
-    dataset = get_batch(10000)
+    dataset = get_batch(DATASET_SIZE)
     dataset = torch.utils.data.TensorDataset(dataset)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
     # reload(CNF)
     # cpnf: CNF.Cpnf = CNF.Cpnf(2)
     # cpnf.to(DEVICE)
-    hidden_features = HIDDEN_LAYERS
+    hidden_features = HIDDEN_FEATURES
+    hidden_layers = HIDDEN_LAYERS
     filds_num = FIELDS
     cpnflist = torch.nn.ModuleList([CNF.Cpnf(2).to(DEVICE) for i in range(filds_num)])
+    hidden_l = []
+    for i in range(hidden_layers):
+        hidden_l.append(torch.nn.Linear(hidden_features, hidden_features))
+        hidden_l.append(torch.nn.ReLU())
     time_gates = torch.nn.ModuleList([torch.nn.Sequential(torch.nn.Linear(1, hidden_features),
-                                    torch.nn.ReLU(),
-                                    torch.nn.Linear(hidden_features, hidden_features),
+                                    *hidden_l,
                                     torch.nn.ReLU(),
                                     torch.nn.Linear(hidden_features, 1),
                                     torch.nn.Sigmoid()) for i in range(filds_num)])
@@ -115,8 +142,9 @@ def main():
     # out2 = display(loss, display_id=True)
 
     # with profile(activities=activities, record_shapes=True, profile_memory=True) as prof:
+    pbar = tqdm()
     for _ in range(EPOCHES):
-        for X, in tqdm(dataloader):
+        for X, in dataloader:
             # print(X)
             Y, log_jac = wraped.forward(X, True)
             Y.requires_grad_()
@@ -136,10 +164,12 @@ def main():
             # if step == 10:
             #     break
             step+=1
+            pbar.update(1)
     show_density(fig, ax, wraped)
     torch.save(cnf.state_dict(), "models/cnf.pt")
     fig.savefig("gallery/fig" + str(step) + ".png")
     save_checkpoint(wraped.field.state_dict(), optimizer.state_dict(), step)
+    pbar.close()
 
 if __name__ == "__main__":
     main()
