@@ -44,6 +44,37 @@ class AdditiveCoupling(nn.Module):
         b = b + (-1 if inverse else 1) * self.mid_model(a)
         return self.spliter.merge(a, b)
 
+class BaseSpliter:
+    def __init__(self, even: bool, n: int):
+        if n % 2 != 0:
+            raise ValueError
+        self.less = n // 2
+        self.more = n // 2
+        self.even = even
+        if not even:
+            self.left = self.less
+            self.right = self.more
+        else:
+            self.left = self.more
+            self.right = self.less
+
+    def split(self, batch: torch.Tensor):
+        less_out = batch[:, 1::2]
+        more_out = batch[:, 0::2]
+        if not self.even:
+            left_out = less_out
+            right_out = more_out
+        else:
+            left_out = more_out
+            right_out = less_out
+        return left_out, right_out
+
+    def merge(self, left_batch: torch.Tensor, right_batch: torch.Tensor) -> torch.Tensor:
+        if not self.even:
+            res = torch.flatten(torch.stack([right_batch, left_batch], dim=1).transpose(-1, -2), start_dim=1)
+        else:
+            res = torch.flatten(torch.stack([left_batch, right_batch], dim=1).transpose(-1, -2), start_dim=1)
+        return res
 
 class NICE(nn.Module):
     def __init__(self, mid_model: Callable[[int, int], nn.Module],
