@@ -1,6 +1,6 @@
 # from torchdiffeq import odeint
 # from importlib import reload
-import CNF
+import src.science_school.continousFlows.CNF as CNF
 import torch
 import matplotlib.pyplot as plt
 import numpy as np

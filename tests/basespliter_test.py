@@ -1,4 +1,4 @@
-import nice_model
+import science_school.nice.nice_model as nice_model
 import torch
 
 def test_smart_spliter_odd_split():
